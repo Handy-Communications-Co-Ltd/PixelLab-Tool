@@ -654,7 +654,7 @@ class CharacterPanel(BasePanel):
         self.copy_source_menu.pack(side="left", padx=10)
         ctk.CTkButton(src_row, text="확인", width=50, command=self._show_source_anims).pack(side="left")
 
-        self.copy_source_anims = ctk.CTkLabel(copy_frame, text="원본 애니메이션: -", font=("", 11), text_color="cyan", justify="left", anchor="w")
+        self.copy_source_anims = ctk.CTkLabel(copy_frame, text="원본 애니메이션: -", font=("", 12), text_color="#90EE90", justify="left", anchor="w")
         self.copy_source_anims.pack(anchor="w", padx=10, pady=3)
 
         # Target character
@@ -993,15 +993,14 @@ class CharacterPanel(BasePanel):
                 anim_header.pack(anchor="w", fill="x")
 
                 if anims:
-                    ctk.CTkLabel(anim_header, text=f"애니메이션 ({len(anims)}개)", font=("", 10, "bold"), text_color="cyan", anchor="w").pack(side="left")
-                    # Show each animation on its own line, wrapped
+                    ctk.CTkLabel(anim_header, text=f"애니메이션 ({len(anims)}개)", font=("", 12, "bold"), text_color="#90EE90", anchor="w").pack(side="left")
                     anim_lines = "  " + "\n  ".join(anims)
-                    ctk.CTkLabel(info_frame, text=anim_lines, font=("", 10), text_color="cyan",
-                                 anchor="w", justify="left").pack(anchor="w")
+                    ctk.CTkLabel(info_frame, text=anim_lines, font=("", 12), text_color="#90EE90",
+                                 anchor="w", justify="left").pack(anchor="w", pady=(2, 4))
                 elif anim_count > 0:
-                    ctk.CTkLabel(anim_header, text=f"애니메이션: {anim_count}개 (미등록)", font=("", 10), text_color="yellow", anchor="w").pack(side="left")
+                    ctk.CTkLabel(anim_header, text=f"애니메이션: {anim_count}개 (미등록)", font=("", 12), text_color="yellow", anchor="w").pack(side="left")
                 else:
-                    ctk.CTkLabel(anim_header, text="애니메이션: 없음", font=("", 10), text_color="gray", anchor="w").pack(side="left")
+                    ctk.CTkLabel(anim_header, text="애니메이션: 없음", font=("", 12), text_color="gray", anchor="w").pack(side="left")
 
                 # Manual register button for untracked animations
                 if anim_count > 0 and len(anims) < anim_count:
