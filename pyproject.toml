@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pixellab-tool"
@@ -18,10 +18,14 @@ dependencies = [
     "python-dotenv>=1.0",
     "Pillow>=9.0",
     "rich>=13.0",
+    "customtkinter>=5.2",
 ]
 
 [project.scripts]
 pixellab = "pixellab_tool.cli:cli"
+
+[project.gui-scripts]
+pixellab-gui = "pixellab_tool.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/HandyCommunication/PixelLab-Tool"
