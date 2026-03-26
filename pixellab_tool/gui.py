@@ -233,10 +233,11 @@ class BasePanel(ctk.CTkScrollableFrame):
             try:
                 result = fn()
                 if callback:
-                    self.after(0, lambda: callback(result, None))
+                    self.after(0, lambda r=result: callback(r, None))
             except Exception as e:
                 if callback:
-                    self.after(0, lambda: callback(None, e))
+                    err = e  # capture before lambda
+                    self.after(0, lambda er=err: callback(None, er))
         threading.Thread(target=worker, daemon=True).start()
 
     def require_client(self) -> bool:
@@ -1099,6 +1100,9 @@ class CharacterPanel(BasePanel):
                         result = self.client.create_character_4dir(desc, w, h, **run_kwargs)
                     else:
                         result = self.client.create_character_8dir(desc, w, h, **run_kwargs)
+                    # Debug: log raw response
+                    import json as _json
+                    print(f"[DEBUG] Character creation response: {_json.dumps(result, indent=2, default=str)[:500]}")
                 except Exception as e:
                     err_msg = str(e)
                     # Show what was sent for debugging
