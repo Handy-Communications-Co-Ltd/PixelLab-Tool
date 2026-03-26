@@ -5,6 +5,7 @@ import io
 import json
 import os
 import threading
+import zipfile
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -51,6 +52,50 @@ def _get_character_animations(character_id: str) -> list[str]:
     """Get list of animations created for a character."""
     data = _load_anim_track()
     return data.get(character_id, [])
+
+
+def _extract_animations_from_zip(zip_data: bytes) -> list[str]:
+    """Extract animation names from a character ZIP file."""
+    animations = set()
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            # Try metadata.json first
+            for name in zf.namelist():
+                if name.endswith("metadata.json"):
+                    try:
+                        meta = json.loads(zf.read(name))
+                        # Check for animation list in metadata
+                        if isinstance(meta, dict):
+                            for key in ("animations", "animation_list", "anims"):
+                                if key in meta:
+                                    anim_data = meta[key]
+                                    if isinstance(anim_data, list):
+                                        for a in anim_data:
+                                            if isinstance(a, str):
+                                                animations.add(a)
+                                            elif isinstance(a, dict):
+                                                aname = a.get("name") or a.get("template_animation_id") or a.get("id", "")
+                                                if aname:
+                                                    animations.add(aname)
+                    except Exception:
+                        pass
+
+            # Also scan folder structure for animation names
+            # Typical: animations/walking/south/frame_0.png
+            for name in zf.namelist():
+                parts = name.replace("\\", "/").split("/")
+                for i, part in enumerate(parts):
+                    if part.lower() in ("animations", "animation", "anims"):
+                        if i + 1 < len(parts) and parts[i + 1] and not parts[i + 1].startswith("."):
+                            anim_name = parts[i + 1]
+                            # Skip direction names and file names
+                            if anim_name not in ("south", "north", "east", "west",
+                                                  "south-east", "south-west", "north-east", "north-west") \
+                               and "." not in anim_name:
+                                animations.add(anim_name)
+    except Exception:
+        pass
+    return sorted(animations)
 
 
 ctk.set_appearance_mode("dark")
@@ -852,8 +897,12 @@ class CharacterPanel(BasePanel):
                     detailed.append(detail_data)
                 except Exception:
                     detailed.append(ch)
-            # Download preview images
-            for ch in detailed:
+            # Download preview images and extract animations from ZIP
+            for i, ch in enumerate(detailed):
+                cid = str(ch.get("id", ch.get("character_id", "")))
+                self.after(0, lambda n=i+1, t=len(detailed):
+                          self.app.status_bar.set_status(f"캐릭터 정보 로딩중... ({n}/{t})"))
+                # Preview image
                 preview_url = ch.get("preview_url")
                 rotation_urls = ch.get("rotation_urls", {})
                 if not preview_url and rotation_urls:
@@ -862,6 +911,19 @@ class CharacterPanel(BasePanel):
                     img = download_image_from_url(preview_url)
                     if img:
                         ch["_preview_img"] = img
+                # Extract animations from ZIP if not already tracked
+                anim_count = ch.get("animation_count", 0)
+                existing_anims = _get_character_animations(cid)
+                if anim_count > 0 and not existing_anims:
+                    try:
+                        zip_data = self.client.export_character_zip(cid)
+                        anims = _extract_animations_from_zip(zip_data)
+                        if anims:
+                            track = _load_anim_track()
+                            track[cid] = anims
+                            _save_anim_track(track)
+                    except Exception:
+                        pass
             return detailed
 
         def on_done(characters, err):
