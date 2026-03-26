@@ -682,6 +682,28 @@ class CharacterPanel(BasePanel):
         self.batch_anim_menu = ctk.CTkOptionMenu(batch_tab, values=ANIMATION_TEMPLATES)
         self.batch_anim_menu.pack(fill="x", padx=10, pady=5)
 
+        # Custom action description
+        ctk.CTkLabel(batch_tab, text="커스텀 동작 설명 (선택사항):").pack(anchor="w", padx=10, pady=(5, 0))
+        self.batch_action_desc = ctk.CTkEntry(batch_tab, placeholder_text="예: 큰 망치를 세게 휘두르기")
+        self.batch_action_desc.pack(fill="x", padx=10, pady=5)
+
+        # Direction selection
+        ctk.CTkLabel(batch_tab, text="방향 선택:").pack(anchor="w", padx=10, pady=(5, 0))
+        batch_dir_frame = ctk.CTkFrame(batch_tab)
+        batch_dir_frame.pack(fill="x", padx=10, pady=5)
+
+        all_dirs = ["south", "west", "east", "north", "south-west", "south-east", "north-west", "north-east"]
+        self.batch_dir_vars = {}
+        self.batch_all_dir = ctk.BooleanVar(value=True)
+
+        ctk.CTkCheckBox(batch_dir_frame, text="전체", variable=self.batch_all_dir,
+                        command=self._batch_toggle_dirs).pack(side="left", padx=5)
+        for d in all_dirs:
+            var = ctk.BooleanVar(value=False)
+            ctk.CTkCheckBox(batch_dir_frame, text=d, variable=var, width=90,
+                            command=self._batch_on_dir_check).pack(side="left", padx=3)
+            self.batch_dir_vars[d] = var
+
         # Character multi-select
         ctk.CTkLabel(batch_tab, text="적용할 캐릭터 선택:").pack(anchor="w", padx=10, pady=(10, 0))
 
@@ -740,6 +762,17 @@ class CharacterPanel(BasePanel):
                             variable=var).pack(anchor="w", pady=2)
             self.batch_char_vars[cid] = var
 
+    def _batch_toggle_dirs(self):
+        if self.batch_all_dir.get():
+            for var in self.batch_dir_vars.values():
+                var.set(False)
+
+    def _batch_on_dir_check(self):
+        if any(v.get() for v in self.batch_dir_vars.values()):
+            self.batch_all_dir.set(False)
+        else:
+            self.batch_all_dir.set(True)
+
     def _batch_select_all(self):
         for var in self.batch_char_vars.values():
             var.set(True)
@@ -768,12 +801,20 @@ class CharacterPanel(BasePanel):
         self.batch_progress.set(0)
 
         def do_batch():
+            kwargs = {}
+            action_desc = self.batch_action_desc.get().strip()
+            if action_desc:
+                kwargs["action_description"] = action_desc
+            sel_dirs = [d for d, v in self.batch_dir_vars.items() if v.get()]
+            if sel_dirs and not self.batch_all_dir.get():
+                kwargs["directions"] = sel_dirs
+
             all_saved = []
             for i, cid in enumerate(selected):
                 self.after(0, lambda n=i+1, t=total, c=cid:
                           (self.app.status_bar.set_status(f"일괄 애니메이션 ({n}/{t}) - {c[:8]}..."),
                            self.batch_progress.set(n / t)))
-                result = self.client.animate_character(cid, template)
+                result = self.client.animate_character(cid, template, **kwargs)
                 saved = self.handle_job_and_save(result, f"batch_{template}_{cid[:8]}")
                 all_saved.extend(saved)
                 _record_animation(cid, template)
