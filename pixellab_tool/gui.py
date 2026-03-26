@@ -1061,6 +1061,16 @@ class CharacterPanel(BasePanel):
 
         batch = max(1, int(self.batch_count.get() or 1))
 
+        # Warn about known incompatible combinations
+        view = self.view_var.get()
+        if dirs == "8" and view in ("high top-down", "low top-down"):
+            if not messagebox.askyesno("호환성 경고",
+                    f"8방향 + '{view}' 조합은 서버 오류가 발생할 수 있습니다.\n"
+                    f"(bone_scaling 오류)\n\n"
+                    f"'side' 또는 'perspective' 시점을 권장합니다.\n\n"
+                    f"그래도 계속하시겠습니까?"):
+                return
+
         self.create_btn.configure(state="disabled", text="생성중...")
         self.app.status_bar.set_status(f"캐릭터 생성중... (0/{batch})")
 
