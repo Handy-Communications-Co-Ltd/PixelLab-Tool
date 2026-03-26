@@ -23,14 +23,27 @@ ctk.set_default_color_theme("blue")
 # ── Constants ──
 
 SIDEBAR_ITEMS = [
-    ("Dashboard", "📊"),
-    ("Generate", "🎨"),
-    ("Character", "🧙"),
-    ("Animation", "🎬"),
-    ("Tileset", "🗺️"),
-    ("Edit", "✏️"),
-    ("Rotate", "🔄"),
-    ("Settings", "⚙️"),
+    ("Dashboard", "D"),
+    ("Generate", "G"),
+    ("Character", "C"),
+    ("Animation", "A"),
+    ("Tileset", "T"),
+    ("Edit", "E"),
+    ("Rotate", "R"),
+    ("Settings", "S"),
+]
+
+CHARACTER_SIZE_PRESETS = [
+    "32x32", "48x48", "64x64", "96x96", "128x128", "256x256",
+]
+
+ANIMATION_TEMPLATES = [
+    "breathing-idle", "walking", "running", "jumping",
+    "attack", "slash", "cross-punch", "flying-kick",
+    "casting-spell", "fireball", "shooting-arrow",
+    "crouching", "crouched-walking", "drinking",
+    "falling-back-death", "death", "hurt",
+    "fight-stance-idle-8-frames", "backflip",
 ]
 
 DEFAULT_OUTPUT_DIR = "output"
@@ -132,16 +145,27 @@ class DashboardPanel(BasePanel):
 
         ctk.CTkLabel(self, text="Dashboard", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
 
-        self.info_frame = ctk.CTkFrame(self)
-        self.info_frame.pack(fill="x", padx=20, pady=10)
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", padx=20, pady=10)
 
-        self.balance_label = ctk.CTkLabel(self.info_frame, text="Credits: --", font=("", 16))
-        self.balance_label.pack(pady=10, padx=20, anchor="w")
+        # Credits card
+        credit_card = ctk.CTkFrame(cards_frame)
+        credit_card.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        ctk.CTkLabel(credit_card, text="Credits", font=("", 12), text_color="gray").pack(pady=(15, 0), padx=15, anchor="w")
+        self.balance_label = ctk.CTkLabel(credit_card, text="--", font=("", 32, "bold"))
+        self.balance_label.pack(pady=(0, 15), padx=15, anchor="w")
 
-        self.generations_label = ctk.CTkLabel(self.info_frame, text="Generations: --", font=("", 16))
-        self.generations_label.pack(pady=5, padx=20, anchor="w")
+        # Generations card
+        gen_card = ctk.CTkFrame(cards_frame)
+        gen_card.pack(side="left", fill="both", expand=True, padx=(5, 5))
+        ctk.CTkLabel(gen_card, text="Generations", font=("", 12), text_color="gray").pack(pady=(15, 0), padx=15, anchor="w")
+        self.generations_label = ctk.CTkLabel(gen_card, text="--", font=("", 32, "bold"))
+        self.generations_label.pack(pady=(0, 15), padx=15, anchor="w")
 
-        ctk.CTkButton(self.info_frame, text="Refresh Balance", command=self.refresh_balance).pack(pady=10, padx=20, anchor="w")
+        # Refresh card
+        refresh_card = ctk.CTkFrame(cards_frame)
+        refresh_card.pack(side="left", fill="both", expand=True, padx=(5, 0))
+        ctk.CTkButton(refresh_card, text="Refresh", command=self.refresh_balance, height=50).pack(pady=15, padx=15, fill="x")
 
         # Quick actions
         ctk.CTkLabel(self, text="Quick Actions", font=("", 18, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
@@ -169,8 +193,8 @@ class DashboardPanel(BasePanel):
             data = result.get("data", result)
             credits = data.get("remaining_credits", data.get("credits", "N/A"))
             gens = data.get("remaining_generations", data.get("generations", "N/A"))
-            self.balance_label.configure(text=f"Credits: {credits}")
-            self.generations_label.configure(text=f"Generations: {gens}")
+            self.balance_label.configure(text=str(credits))
+            self.generations_label.configure(text=str(gens))
             self.app.status_bar.set_credits(f"Credits: {credits}")
             self.app.status_bar.set_status("Ready")
 
@@ -335,30 +359,42 @@ class CharacterPanel(BasePanel):
         self.dir_var = ctk.StringVar(value="4")
         ctk.CTkOptionMenu(row, values=["4", "8"], variable=self.dir_var).pack(side="left", padx=10)
 
-        ctk.CTkLabel(row, text="Width:").pack(side="left", padx=(20, 0))
-        self.w_entry = ctk.CTkEntry(row, width=60)
-        self.w_entry.pack(side="left", padx=5)
-        self.w_entry.insert(0, "64")
+        ctk.CTkLabel(row, text="Size:").pack(side="left", padx=(20, 0))
+        self.size_var = ctk.StringVar(value="64x64")
+        ctk.CTkOptionMenu(row, values=CHARACTER_SIZE_PRESETS, variable=self.size_var).pack(side="left", padx=10)
 
-        ctk.CTkLabel(row, text="Height:").pack(side="left", padx=(10, 0))
-        self.h_entry = ctk.CTkEntry(row, width=60)
-        self.h_entry.pack(side="left", padx=5)
-        self.h_entry.insert(0, "64")
+        ctk.CTkLabel(row, text="View:").pack(side="left", padx=(20, 0))
+        self.view_var = ctk.StringVar(value="side")
+        ctk.CTkOptionMenu(row, values=["side", "low top-down", "high top-down", "perspective"], variable=self.view_var).pack(side="left", padx=10)
 
         row2 = ctk.CTkFrame(create_tab)
         row2.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(row2, text="Outline:").pack(side="left")
+        ctk.CTkLabel(row2, text="Template:").pack(side="left")
+        self.template_var = ctk.StringVar(value="mannequin")
+        ctk.CTkOptionMenu(row2, values=["mannequin", "bear", "cat", "dog", "horse", "lion"], variable=self.template_var).pack(side="left", padx=10)
+
+        ctk.CTkLabel(row2, text="Detail:").pack(side="left", padx=(20, 0))
+        self.detail_var = ctk.StringVar(value="medium")
+        ctk.CTkOptionMenu(row2, values=["low", "medium", "high"], variable=self.detail_var).pack(side="left", padx=10)
+
+        row3 = ctk.CTkFrame(create_tab)
+        row3.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(row3, text="Outline:").pack(side="left")
         self.outline_var = ctk.StringVar(value="none")
-        ctk.CTkOptionMenu(row2, values=["none", "thin", "medium", "thick"], variable=self.outline_var).pack(side="left", padx=10)
+        ctk.CTkOptionMenu(row3, values=["none", "thin", "medium", "thick"], variable=self.outline_var).pack(side="left", padx=10)
 
-        ctk.CTkLabel(row2, text="Shading:").pack(side="left", padx=(20, 0))
+        ctk.CTkLabel(row3, text="Shading:").pack(side="left", padx=(20, 0))
         self.shading_var = ctk.StringVar(value="none")
-        ctk.CTkOptionMenu(row2, values=["none", "soft", "hard", "flat"], variable=self.shading_var).pack(side="left", padx=10)
+        ctk.CTkOptionMenu(row3, values=["none", "soft", "hard", "flat"], variable=self.shading_var).pack(side="left", padx=10)
 
-        ctk.CTkLabel(row2, text="Seed:").pack(side="left", padx=(20, 0))
-        self.seed_entry = ctk.CTkEntry(row2, width=80, placeholder_text="Random")
+        ctk.CTkLabel(row3, text="Seed:").pack(side="left", padx=(20, 0))
+        self.seed_entry = ctk.CTkEntry(row3, width=80, placeholder_text="Random")
         self.seed_entry.pack(side="left", padx=5)
+
+        self.isometric_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(row3, text="Isometric", variable=self.isometric_var).pack(side="left", padx=20)
 
         self.create_btn = ctk.CTkButton(create_tab, text="Create Character", command=self.create_character, height=40, font=("", 14, "bold"))
         self.create_btn.pack(fill="x", padx=10, pady=15)
@@ -378,26 +414,45 @@ class CharacterPanel(BasePanel):
         ctk.CTkButton(btn_row, text="Export Selected", command=self.export_selected).pack(side="left", padx=5)
         ctk.CTkButton(btn_row, text="Delete Selected", command=self.delete_selected, fg_color="red", hover_color="darkred").pack(side="left", padx=5)
 
-        self.char_list_frame = ctk.CTkScrollableFrame(manage_tab, height=300)
+        self.char_list_frame = ctk.CTkScrollableFrame(manage_tab, height=400)
         self.char_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
         self.selected_char_id = ctk.StringVar()
-        self.char_radiobuttons = []
+        self.char_widgets = []
+        self.char_photos = []  # prevent GC
 
         # ── Animate Tab ──
         anim_tab = tabs.add("Animate")
 
         ctk.CTkLabel(anim_tab, text="Character ID:").pack(anchor="w", padx=10, pady=(10, 0))
-        self.anim_char_id = ctk.CTkEntry(anim_tab, placeholder_text="Paste character ID")
+        self.anim_char_id = ctk.CTkEntry(anim_tab, placeholder_text="Paste character ID or select from Manage tab")
         self.anim_char_id.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(anim_tab, text="Animation:").pack(anchor="w", padx=10, pady=(10, 0))
-        self.anim_template = ctk.CTkOptionMenu(anim_tab, values=[
-            "walking", "running", "jumping", "breathing-idle", "attack",
-            "death", "casting-spell", "shooting-arrow", "slash", "hurt",
-        ])
+        ctk.CTkButton(anim_tab, text="Use Selected Character", width=180,
+                      command=lambda: self.anim_char_id.insert(0, self.selected_char_id.get()) if self.selected_char_id.get() else None
+                      ).pack(anchor="w", padx=10, pady=2)
+
+        ctk.CTkLabel(anim_tab, text="Template Animation:").pack(anchor="w", padx=10, pady=(10, 0))
+        self.anim_template = ctk.CTkOptionMenu(anim_tab, values=ANIMATION_TEMPLATES)
         self.anim_template.pack(fill="x", padx=10, pady=5)
 
-        self.anim_btn = ctk.CTkButton(anim_tab, text="Animate", command=self.animate_character, height=40)
+        ctk.CTkLabel(anim_tab, text="Custom Action (optional - overrides template description):").pack(anchor="w", padx=10, pady=(10, 0))
+        self.anim_action_desc = ctk.CTkEntry(anim_tab, placeholder_text="e.g. swinging a large hammer aggressively")
+        self.anim_action_desc.pack(fill="x", padx=10, pady=5)
+
+        anim_opts = ctk.CTkFrame(anim_tab)
+        anim_opts.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(anim_opts, text="Directions:").pack(side="left")
+        self.anim_dirs_var = ctk.StringVar(value="all")
+        ctk.CTkOptionMenu(anim_opts, values=["all", "south", "west", "east", "north",
+                                              "south-west", "south-east", "north-west", "north-east"],
+                          variable=self.anim_dirs_var).pack(side="left", padx=10)
+
+        ctk.CTkLabel(anim_opts, text="Seed:").pack(side="left", padx=(20, 0))
+        self.anim_seed = ctk.CTkEntry(anim_opts, width=80, placeholder_text="Random")
+        self.anim_seed.pack(side="left", padx=5)
+
+        self.anim_btn = ctk.CTkButton(anim_tab, text="Animate", command=self.animate_character, height=40, font=("", 14, "bold"))
         self.anim_btn.pack(fill="x", padx=10, pady=15)
 
         self.anim_result = ctk.CTkLabel(anim_tab, text="")
@@ -411,10 +466,15 @@ class CharacterPanel(BasePanel):
             messagebox.showwarning("Input Required", "Please enter a description.")
             return
 
-        w = int(self.w_entry.get() or 64)
-        h = int(self.h_entry.get() or 64)
+        size_parts = self.size_var.get().split("x")
+        w, h = int(size_parts[0]), int(size_parts[1])
         dirs = self.dir_var.get()
         kwargs = {}
+        kwargs["view"] = self.view_var.get()
+        kwargs["template_id"] = self.template_var.get()
+        kwargs["detail"] = self.detail_var.get()
+        if self.isometric_var.get():
+            kwargs["isometric"] = True
         outline = self.outline_var.get()
         if outline != "none":
             kwargs["outline"] = outline
@@ -454,36 +514,89 @@ class CharacterPanel(BasePanel):
     def refresh_list(self):
         if not self.require_client():
             return
+        self.app.status_bar.set_status("Loading characters...")
 
         def fetch():
-            return self.client.list_characters(limit=50)
+            result = self.client.list_characters(limit=50)
+            data = result.get("data", result)
+            characters = data if isinstance(data, list) else data.get("characters", [])
+            # Fetch details for each character to get images
+            detailed = []
+            for ch in characters:
+                cid = str(ch.get("id", ""))
+                try:
+                    detail = self.client.get_character(cid)
+                    detail_data = detail.get("data", detail)
+                    detailed.append(detail_data)
+                except Exception:
+                    detailed.append(ch)
+            return detailed
 
-        def on_done(result, err):
+        def on_done(characters, err):
             if err:
                 messagebox.showerror("Error", str(err))
+                self.app.status_bar.set_status("Error loading characters")
                 return
             for w in self.char_list_frame.winfo_children():
                 w.destroy()
-            self.char_radiobuttons.clear()
-
-            data = result.get("data", result)
-            characters = data if isinstance(data, list) else data.get("characters", [])
+            self.char_widgets.clear()
+            self.char_photos.clear()
 
             if not characters:
                 ctk.CTkLabel(self.char_list_frame, text="No characters found.").pack(pady=10)
+                self.app.status_bar.set_status("Ready")
                 return
 
             for ch in characters:
-                cid = str(ch.get("id", ""))
-                desc = str(ch.get("description", ""))[:50]
-                rb = ctk.CTkRadioButton(
-                    self.char_list_frame,
-                    text=f"{cid[:12]}... - {desc}",
-                    variable=self.selected_char_id,
-                    value=cid,
-                )
-                rb.pack(anchor="w", padx=5, pady=2)
-                self.char_radiobuttons.append(rb)
+                cid = str(ch.get("id", ch.get("character_id", "")))
+                desc = str(ch.get("description", ""))[:40]
+
+                card = ctk.CTkFrame(self.char_list_frame)
+                card.pack(fill="x", padx=5, pady=3)
+
+                # Try to show thumbnail
+                thumb_label = ctk.CTkLabel(card, text="", width=64, height=64)
+                thumb_label.pack(side="left", padx=5, pady=5)
+
+                images = ch.get("images", ch.get("sprites", []))
+                if isinstance(images, dict):
+                    # Sometimes images is a dict with direction keys
+                    first_img = next(iter(images.values()), None)
+                elif isinstance(images, list) and images:
+                    first_img = images[0]
+                else:
+                    first_img = None
+
+                b64_data = None
+                if isinstance(first_img, dict):
+                    b64_data = first_img.get("base64")
+                elif isinstance(first_img, str):
+                    b64_data = first_img
+
+                if b64_data:
+                    try:
+                        raw = base64.b64decode(b64_data)
+                        img = Image.open(io.BytesIO(raw))
+                        img.thumbnail((64, 64), Image.NEAREST)
+                        photo = ImageTk.PhotoImage(img)
+                        thumb_label.configure(image=photo)
+                        self.char_photos.append(photo)
+                    except Exception:
+                        thumb_label.configure(text="[img]")
+                else:
+                    thumb_label.configure(text="[no img]")
+
+                info_frame = ctk.CTkFrame(card, fg_color="transparent")
+                info_frame.pack(side="left", fill="x", expand=True, padx=5)
+
+                ctk.CTkLabel(info_frame, text=desc or "No description", font=("", 13, "bold"), anchor="w").pack(anchor="w")
+                ctk.CTkLabel(info_frame, text=f"ID: {cid[:20]}", font=("", 10), text_color="gray", anchor="w").pack(anchor="w")
+
+                rb = ctk.CTkRadioButton(card, text="Select", variable=self.selected_char_id, value=cid, width=70)
+                rb.pack(side="right", padx=10)
+                self.char_widgets.append(card)
+
+            self.app.status_bar.set_status(f"Loaded {len(characters)} characters")
 
         self.run_async(fetch, on_done)
 
@@ -542,7 +655,17 @@ class CharacterPanel(BasePanel):
         self.app.status_bar.set_status("Animating...")
 
         def do_animate():
-            result = self.client.animate_character(cid, template)
+            kwargs = {}
+            action_desc = self.anim_action_desc.get().strip()
+            if action_desc:
+                kwargs["action_description"] = action_desc
+            dirs = self.anim_dirs_var.get()
+            if dirs != "all":
+                kwargs["directions"] = [dirs]
+            seed_text = self.anim_seed.get().strip()
+            if seed_text:
+                kwargs["seed"] = int(seed_text)
+            result = self.client.animate_character(cid, template, **kwargs)
             saved = self.handle_job_and_save(result, "anim")
             return saved
 
@@ -1338,10 +1461,10 @@ class PixelLabApp(ctk.CTk):
 
         # Nav buttons
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
-        for name, icon in SIDEBAR_ITEMS:
+        for name, shortcut in SIDEBAR_ITEMS:
             btn = ctk.CTkButton(
                 self.sidebar,
-                text=f" {icon}  {name}",
+                text=f"  {name}",
                 anchor="w",
                 height=36,
                 corner_radius=8,
