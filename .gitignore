@@ -27,6 +27,12 @@ env/
 .DS_Store
 Thumbs.db
 
+# Build
+dist/
+build/
+*.spec
+!pixellab.spec
+
 # Output
 output/
 *.png
