@@ -527,16 +527,28 @@ class CharacterPanel(BasePanel):
         self.anim_action_desc = ctk.CTkEntry(anim_tab, placeholder_text="예: 큰 망치를 세게 휘두르기")
         self.anim_action_desc.pack(fill="x", padx=10, pady=5)
 
+        ctk.CTkLabel(anim_tab, text="방향 선택 (복수 선택 가능):").pack(anchor="w", padx=10, pady=(10, 0))
+
+        dir_frame = ctk.CTkFrame(anim_tab)
+        dir_frame.pack(fill="x", padx=10, pady=5)
+
+        all_dirs = ["south", "west", "east", "north", "south-west", "south-east", "north-west", "north-east"]
+        self.anim_dir_vars = {}
+        self.anim_all_var = ctk.BooleanVar(value=True)
+
+        ctk.CTkCheckBox(dir_frame, text="전체", variable=self.anim_all_var,
+                        command=self._toggle_all_dirs).pack(side="left", padx=5)
+
+        for d in all_dirs:
+            var = ctk.BooleanVar(value=False)
+            ctk.CTkCheckBox(dir_frame, text=d, variable=var, width=90,
+                            command=self._on_dir_check).pack(side="left", padx=3)
+            self.anim_dir_vars[d] = var
+
         anim_opts = ctk.CTkFrame(anim_tab)
         anim_opts.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(anim_opts, text="방향:").pack(side="left")
-        self.anim_dirs_var = ctk.StringVar(value="all")
-        ctk.CTkOptionMenu(anim_opts, values=["all", "south", "west", "east", "north",
-                                              "south-west", "south-east", "north-west", "north-east"],
-                          variable=self.anim_dirs_var).pack(side="left", padx=10)
-
-        ctk.CTkLabel(anim_opts, text="시드:").pack(side="left", padx=(20, 0))
+        ctk.CTkLabel(anim_opts, text="시드:").pack(side="left")
         self.anim_seed = ctk.CTkEntry(anim_opts, width=80, placeholder_text="랜덤")
         self.anim_seed.pack(side="left", padx=5)
 
@@ -554,6 +566,18 @@ class CharacterPanel(BasePanel):
 
     def _on_tab_change(self, tab_name):
         pass
+
+    def _toggle_all_dirs(self):
+        if self.anim_all_var.get():
+            for var in self.anim_dir_vars.values():
+                var.set(False)
+
+    def _on_dir_check(self):
+        any_checked = any(v.get() for v in self.anim_dir_vars.values())
+        if any_checked:
+            self.anim_all_var.set(False)
+        else:
+            self.anim_all_var.set(True)
 
     def _update_anim_dropdown(self):
         """Update the animation tab's character dropdown from loaded characters."""
@@ -809,19 +833,34 @@ class CharacterPanel(BasePanel):
         self.app.status_bar.set_status("애니메이션 생성중...")
 
         def do_animate():
-            kwargs = {}
+            base_kwargs = {}
             action_desc = self.anim_action_desc.get().strip()
             if action_desc:
-                kwargs["action_description"] = action_desc
-            dirs = self.anim_dirs_var.get()
-            if dirs != "all":
-                kwargs["directions"] = [dirs]
+                base_kwargs["action_description"] = action_desc
             seed_text = self.anim_seed.get().strip()
             if seed_text:
-                kwargs["seed"] = int(seed_text)
-            result = self.client.animate_character(cid, template, **kwargs)
-            saved = self.handle_job_and_save(result, "anim")
-            return saved
+                base_kwargs["seed"] = int(seed_text)
+
+            # Determine selected directions
+            selected_dirs = [d for d, v in self.anim_dir_vars.items() if v.get()]
+            use_all = self.anim_all_var.get() or not selected_dirs
+
+            all_saved = []
+            if use_all:
+                # Single call with all directions
+                result = self.client.animate_character(cid, template, **base_kwargs)
+                all_saved.extend(self.handle_job_and_save(result, "anim"))
+            else:
+                # One call per selected direction
+                for i, d in enumerate(selected_dirs):
+                    self.after(0, lambda n=i+1, t=len(selected_dirs):
+                              self.app.status_bar.set_status(f"애니메이션 생성중... ({n}/{t}) - {d}"))
+                    kwargs = dict(base_kwargs)
+                    kwargs["directions"] = [d]
+                    result = self.client.animate_character(cid, template, **kwargs)
+                    saved = self.handle_job_and_save(result, f"anim_{d}")
+                    all_saved.extend(saved)
+            return all_saved
 
         def on_done(saved, err):
             self.anim_btn.configure(state="normal", text="애니메이션 생성")
