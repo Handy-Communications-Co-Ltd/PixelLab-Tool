@@ -227,17 +227,6 @@ class DashboardPanel(BasePanel):
         ctk.CTkButton(quick_frame, text="캐릭터 생성", command=lambda: app.show_panel("Character")).pack(side="left", padx=10, pady=10)
         ctk.CTkButton(quick_frame, text="타일셋 생성", command=lambda: app.show_panel("Tileset")).pack(side="left", padx=10, pady=10)
 
-        # Cost reference
-        ctk.CTkLabel(self, text="예상 비용 (참고)", font=("", 18, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
-
-        cost_frame = ctk.CTkFrame(self)
-        cost_frame.pack(fill="x", padx=20, pady=10)
-
-        for i, (op, cost) in enumerate(OPERATION_COSTS.items()):
-            row_frame = ctk.CTkFrame(cost_frame, fg_color="transparent")
-            row_frame.pack(fill="x", padx=10, pady=1)
-            ctk.CTkLabel(row_frame, text=op, anchor="w").pack(side="left")
-            ctk.CTkLabel(row_frame, text=cost, anchor="e", text_color="orange").pack(side="right")
 
     def refresh_balance(self):
         if not self.require_client():
@@ -287,6 +276,11 @@ class GeneratePanel(BasePanel):
         super().__init__(master, app)
 
         ctk.CTkLabel(self, text="이미지 생성", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
+
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  Pro: ~$0.02  |  PixFlux: ~$0.01  |  BitForge: ~$0.005  |  UI/Style: ~$0.02",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
 
         form = ctk.CTkFrame(self)
         form.pack(fill="x", padx=20, pady=10)
@@ -416,6 +410,11 @@ class CharacterPanel(BasePanel):
 
         ctk.CTkLabel(self, text="캐릭터", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
 
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  4방향: ~$0.08  |  8방향: ~$0.16  |  애니메이션: ~$0.04",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
+
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -470,8 +469,23 @@ class CharacterPanel(BasePanel):
         self.isometric_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(row3, text="아이소메트릭", variable=self.isometric_var).pack(side="left", padx=20)
 
+        # Batch generation row
+        batch_row = ctk.CTkFrame(create_tab)
+        batch_row.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(batch_row, text="반복 생성 횟수:").pack(side="left")
+        self.batch_count = ctk.CTkEntry(batch_row, width=60)
+        self.batch_count.pack(side="left", padx=5)
+        self.batch_count.insert(0, "1")
+        ctk.CTkLabel(batch_row, text="(서로 다른 시드로 여러 캐릭터를 한번에 생성)", font=("", 10), text_color="gray").pack(side="left", padx=10)
+
         self.create_btn = ctk.CTkButton(create_tab, text="캐릭터 생성", command=self.create_character, height=40, font=("", 14, "bold"))
         self.create_btn.pack(fill="x", padx=10, pady=15)
+
+        self.batch_progress = ctk.CTkProgressBar(create_tab)
+        self.batch_progress.pack(fill="x", padx=10, pady=(0, 5))
+        self.batch_progress.set(0)
+        self.batch_progress.pack_forget()  # hidden by default
 
         self.create_preview = ImagePreview(create_tab, 300, 300)
         self.create_preview.pack(pady=5)
@@ -579,34 +593,65 @@ class CharacterPanel(BasePanel):
         if shading != "none":
             kwargs["shading"] = shading
         seed_text = self.seed_entry.get().strip()
-        if seed_text:
-            kwargs["seed"] = int(seed_text)
+        base_seed = int(seed_text) if seed_text else None
+
+        batch = max(1, int(self.batch_count.get() or 1))
 
         self.create_btn.configure(state="disabled", text="생성중...")
-        self.app.status_bar.set_status("캐릭터 생성중...")
+        self.app.status_bar.set_status(f"캐릭터 생성중... (0/{batch})")
+
+        if batch > 1:
+            self.batch_progress.pack(fill="x", padx=10, pady=(0, 5))
+            self.batch_progress.set(0)
 
         def do_create():
-            if dirs == "4":
-                result = self.client.create_character_4dir(desc, w, h, **kwargs)
-            else:
-                result = self.client.create_character_8dir(desc, w, h, **kwargs)
-            char_id = result.get("character_id", result.get("data", {}).get("character_id", "N/A"))
-            saved = self.handle_job_and_save(result, "character")
-            return char_id, saved
+            import random
+            results = []
+            for i in range(batch):
+                run_kwargs = dict(kwargs)
+                if base_seed is not None:
+                    run_kwargs["seed"] = base_seed + i
+                else:
+                    run_kwargs["seed"] = random.randint(1, 999999)
 
-        def on_done(res, err):
+                if dirs == "4":
+                    result = self.client.create_character_4dir(desc, w, h, **run_kwargs)
+                else:
+                    result = self.client.create_character_8dir(desc, w, h, **run_kwargs)
+
+                char_id = result.get("character_id", result.get("data", {}).get("character_id", "N/A"))
+                saved = self.handle_job_and_save(result, f"character_{i}")
+                results.append((char_id, saved))
+
+                progress = (i + 1) / batch
+                self.after(0, lambda p=progress, n=i+1: self._update_batch_progress(p, n, batch))
+
+            return results
+
+        def on_done(results, err):
             self.create_btn.configure(state="normal", text="캐릭터 생성")
+            self.batch_progress.pack_forget()
             if err:
                 messagebox.showerror("오류", str(err))
                 self.app.status_bar.set_status("생성 실패")
                 return
-            char_id, saved = res
-            self.create_result.configure(text=f"캐릭터 ID: {char_id}")
-            if saved:
-                self.create_preview.show_file(saved[0])
+            if not results:
+                return
+            last_id, last_saved = results[-1]
+            if batch == 1:
+                self.create_result.configure(text=f"캐릭터 ID: {last_id}")
+            else:
+                ids = [r[0] for r in results]
+                self.create_result.configure(text=f"{batch}개 캐릭터 생성 완료\nIDs: {', '.join(str(i)[:12] for i in ids)}")
+            if last_saved:
+                self.create_preview.show_file(last_saved[0])
             self.app.status_bar.set_status("준비")
 
         self.run_async(do_create, on_done)
+
+    def _update_batch_progress(self, progress, current, total):
+        self.batch_progress.set(progress)
+        self.app.status_bar.set_status(f"캐릭터 생성중... ({current}/{total})")
 
     def refresh_list(self):
         if not self.require_client():
@@ -787,6 +832,11 @@ class AnimationPanel(BasePanel):
 
         ctk.CTkLabel(self, text="애니메이션", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
 
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  텍스트 애니메이션: ~$0.03  |  보간: ~$0.03",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
+
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -936,6 +986,11 @@ class TilesetPanel(BasePanel):
         super().__init__(master, app)
 
         ctk.CTkLabel(self, text="타일셋", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
+
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  탑다운/횡스크롤: ~$0.04  |  아이소메트릭: ~$0.02  |  프로 타일: ~$0.04",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
@@ -1106,6 +1161,11 @@ class EditPanel(BasePanel):
         super().__init__(master, app)
 
         ctk.CTkLabel(self, text="편집 / 인페인팅", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
+
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  편집: ~$0.02  |  인페인팅: ~$0.02  |  리사이즈: ~$0.01  |  픽셀아트 변환: ~$0.01",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
@@ -1306,6 +1366,11 @@ class RotatePanel(BasePanel):
         super().__init__(master, app)
 
         ctk.CTkLabel(self, text="회전", font=("", 24, "bold")).pack(pady=(20, 10), anchor="w", padx=20)
+
+        cost_info = ctk.CTkFrame(self)
+        cost_info.pack(fill="x", padx=20, pady=(0, 5))
+        ctk.CTkLabel(cost_info, text="예상 비용  |  8방향 회전: ~$0.08  |  단일 회전: ~$0.01",
+                     font=("", 11), text_color="orange").pack(padx=10, pady=5)
 
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
