@@ -671,6 +671,41 @@ class CharacterPanel(BasePanel):
         self.copy_result = ctk.CTkLabel(copy_frame, text="")
         self.copy_result.pack(pady=(0, 10))
 
+        # ── Batch Animation Tab ──
+        batch_tab = tabs.add("일괄 애니메이션")
+
+        ctk.CTkLabel(batch_tab, text="여러 캐릭터에 동일한 애니메이션을 한번에 추가합니다.",
+                     font=("", 11), text_color="gray").pack(anchor="w", padx=10, pady=(10, 5))
+
+        # Animation selection
+        ctk.CTkLabel(batch_tab, text="애니메이션 선택:").pack(anchor="w", padx=10, pady=(5, 0))
+        self.batch_anim_menu = ctk.CTkOptionMenu(batch_tab, values=ANIMATION_TEMPLATES)
+        self.batch_anim_menu.pack(fill="x", padx=10, pady=5)
+
+        # Character multi-select
+        ctk.CTkLabel(batch_tab, text="적용할 캐릭터 선택:").pack(anchor="w", padx=10, pady=(10, 0))
+
+        batch_btn_row = ctk.CTkFrame(batch_tab)
+        batch_btn_row.pack(fill="x", padx=10, pady=5)
+        ctk.CTkButton(batch_btn_row, text="전체 선택", width=80, command=self._batch_select_all).pack(side="left", padx=5)
+        ctk.CTkButton(batch_btn_row, text="전체 해제", width=80, command=self._batch_deselect_all).pack(side="left", padx=5)
+
+        self.batch_char_frame = ctk.CTkScrollableFrame(batch_tab, height=200)
+        self.batch_char_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.batch_char_vars: dict[str, ctk.BooleanVar] = {}
+
+        self.batch_run_btn = ctk.CTkButton(batch_tab, text="일괄 애니메이션 생성", command=self.run_batch_animation,
+                                            height=40, font=("", 14, "bold"))
+        self.batch_run_btn.pack(fill="x", padx=10, pady=10)
+
+        self.batch_progress = ctk.CTkProgressBar(batch_tab)
+        self.batch_progress.pack(fill="x", padx=10, pady=(0, 5))
+        self.batch_progress.set(0)
+        self.batch_progress.pack_forget()
+
+        self.batch_result = ctk.CTkLabel(batch_tab, text="")
+        self.batch_result.pack(pady=5)
+
     def on_panel_shown(self):
         """Called when the Character panel becomes visible."""
         if not self._manage_loaded and self.client:
@@ -691,6 +726,70 @@ class CharacterPanel(BasePanel):
             self.anim_all_var.set(False)
         else:
             self.anim_all_var.set(True)
+
+    def _update_batch_char_list(self):
+        """Update batch tab character checkboxes."""
+        for w in self.batch_char_frame.winfo_children():
+            w.destroy()
+        self.batch_char_vars.clear()
+        for ch in self.loaded_characters:
+            cid = str(ch.get("id", ch.get("character_id", "")))
+            desc = str(ch.get("prompt", ch.get("description", ch.get("name", ""))))[:35]
+            var = ctk.BooleanVar(value=False)
+            ctk.CTkCheckBox(self.batch_char_frame, text=f"{desc} [{cid[:8]}]",
+                            variable=var).pack(anchor="w", pady=2)
+            self.batch_char_vars[cid] = var
+
+    def _batch_select_all(self):
+        for var in self.batch_char_vars.values():
+            var.set(True)
+
+    def _batch_deselect_all(self):
+        for var in self.batch_char_vars.values():
+            var.set(False)
+
+    def run_batch_animation(self):
+        if not self.require_client():
+            return
+        selected = [cid for cid, var in self.batch_char_vars.items() if var.get()]
+        if not selected:
+            messagebox.showwarning("선택 필요", "캐릭터를 하나 이상 선택해주세요.")
+            return
+        template = self.batch_anim_menu.get()
+        total = len(selected)
+
+        if not messagebox.askyesno("확인",
+                f"{total}개 캐릭터에 '{template}' 애니메이션을 생성하시겠습니까?\n"
+                f"예상 비용: ~${total * 0.04:.2f}"):
+            return
+
+        self.batch_run_btn.configure(state="disabled", text="생성중...")
+        self.batch_progress.pack(fill="x", padx=10, pady=(0, 5))
+        self.batch_progress.set(0)
+
+        def do_batch():
+            all_saved = []
+            for i, cid in enumerate(selected):
+                self.after(0, lambda n=i+1, t=total, c=cid:
+                          (self.app.status_bar.set_status(f"일괄 애니메이션 ({n}/{t}) - {c[:8]}..."),
+                           self.batch_progress.set(n / t)))
+                result = self.client.animate_character(cid, template)
+                saved = self.handle_job_and_save(result, f"batch_{template}_{cid[:8]}")
+                all_saved.extend(saved)
+                _record_animation(cid, template)
+            return all_saved
+
+        def on_done(saved, err):
+            self.batch_run_btn.configure(state="normal", text="일괄 애니메이션 생성")
+            self.batch_progress.pack_forget()
+            if err:
+                messagebox.showerror("오류", str(err))
+                self.app.status_bar.set_status("일괄 생성 실패")
+                return
+            self.batch_result.configure(text=f"{total}개 캐릭터에 '{template}' 생성 완료 ({len(saved)}개 프레임)")
+            self.app.status_bar.set_status("준비")
+
+        self.run_async(do_batch, on_done)
 
     def _show_source_anims(self):
         """Show what animations the source character has."""
@@ -791,6 +890,8 @@ class CharacterPanel(BasePanel):
         self.copy_source_menu.set(items[0])
         self.copy_target_menu.configure(values=items)
         self.copy_target_menu.set(items[-1] if len(items) > 1 else items[0])
+        # Update batch character checkboxes
+        self._update_batch_char_list()
 
     def _get_selected_anim_char_id(self) -> str | None:
         """Extract character ID from the animation dropdown selection."""
