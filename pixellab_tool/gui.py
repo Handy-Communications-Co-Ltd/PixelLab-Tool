@@ -519,7 +519,7 @@ class CharacterPanel(BasePanel):
 
         ctk.CTkLabel(row, text="방향:").pack(side="left")
         self.dir_var = ctk.StringVar(value="4")
-        ctk.CTkOptionMenu(row, values=["4", "8"], variable=self.dir_var).pack(side="left", padx=10)
+        ctk.CTkOptionMenu(row, values=["4", "8 (서버 불안정)"], variable=self.dir_var).pack(side="left", padx=10)
 
         ctk.CTkLabel(row, text="크기:").pack(side="left", padx=(20, 0))
         self.size_var = ctk.StringVar(value="64x64")
@@ -1044,7 +1044,17 @@ class CharacterPanel(BasePanel):
 
         size_parts = self.size_var.get().split("x")
         w, h = int(size_parts[0]), int(size_parts[1])
-        dirs = self.dir_var.get()
+        dirs_raw = self.dir_var.get()
+        dirs = "8" if "8" in dirs_raw else "4"
+
+        if dirs == "8":
+            if not messagebox.askyesno("경고",
+                    "8방향 캐릭터 생성은 현재 PixelLab API 서버 문제로\n"
+                    "bone_scaling 오류가 발생할 수 있습니다.\n\n"
+                    "4방향 사용을 권장합니다.\n"
+                    "그래도 시도하시겠습니까?"):
+                return
+
         kwargs = {}
         view = self.view_var.get()
         if view != "side":
@@ -1067,16 +1077,6 @@ class CharacterPanel(BasePanel):
         base_seed = int(seed_text) if seed_text else None
 
         batch = max(1, int(self.batch_count.get() or 1))
-
-        # Warn about known incompatible combinations
-        view = self.view_var.get()
-        if dirs == "8" and view in ("high top-down", "low top-down"):
-            if not messagebox.askyesno("호환성 경고",
-                    f"8방향 + '{view}' 조합은 서버 오류가 발생할 수 있습니다.\n"
-                    f"(bone_scaling 오류)\n\n"
-                    f"'side' 또는 'perspective' 시점을 권장합니다.\n\n"
-                    f"그래도 계속하시겠습니까?"):
-                return
 
         self.create_btn.configure(state="disabled", text="생성중...")
         self.app.status_bar.set_status(f"캐릭터 생성중... (0/{batch})")
