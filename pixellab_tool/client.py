@@ -67,10 +67,12 @@ class PixelLabClient:
         start = time.time()
         while time.time() - start < timeout:
             result = self.get_job(job_id)
-            status = result.get("status") or result.get("data", {}).get("status")
-            if status == "completed":
+            data = result.get("data", {})
+            status = result.get("status") or data.get("status", "")
+            status_lower = status.lower() if isinstance(status, str) else ""
+            if status_lower in ("completed", "complete", "done", "success", "finished"):
                 return result
-            if status == "failed":
+            if status_lower in ("failed", "error", "cancelled"):
                 raise PixelLabError(500, f"Job {job_id} failed: {result}")
             time.sleep(poll_interval)
         raise PixelLabError(408, f"Job {job_id} timed out after {timeout}s")

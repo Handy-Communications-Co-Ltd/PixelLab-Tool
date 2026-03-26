@@ -253,10 +253,16 @@ class BasePanel(ctk.CTkScrollableFrame):
             cost = usage.get("usd", 0)
             if cost:
                 self.app.status_bar.set_cost(f"소모: ${cost:.4f}")
-        job_id = result.get("background_job_id") or (result.get("data") or {}).get("background_job_id")
+        data = result.get("data") or {}
+        job_id = result.get("background_job_id") or data.get("background_job_id")
+        # API sometimes returns a list of job IDs
+        if not job_id:
+            job_ids = result.get("background_job_ids") or data.get("background_job_ids", [])
+            if job_ids:
+                job_id = job_ids[0] if isinstance(job_ids, list) else job_ids
         if job_id:
-            self.app.status_bar.set_status(f"작업 {job_id[:12]}... 처리중")
-            result = self.client.wait_for_job(job_id)
+            self.app.status_bar.set_status(f"작업 {str(job_id)[:12]}... 처리중 (최대 5분)")
+            result = self.client.wait_for_job(str(job_id))
             usage = result.get("usage") or (result.get("data") or {}).get("usage")
             if usage:
                 cost = usage.get("usd", 0)
