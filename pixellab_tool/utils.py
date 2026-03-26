@@ -33,10 +33,26 @@ def save_base64_image(data: str, output_path: str, fmt: str = "png"):
         f.write(raw)
 
 
+def _save_rgba_image(b64_data: str, width: int, height: int, output_path: str):
+    """Decode rgba_bytes base64 and save as PNG."""
+    raw = base64.b64decode(b64_data)
+    img = Image.frombytes("RGBA", (width, height), raw)
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    img.save(output_path, "PNG")
+
+
 def save_images_from_response(data: dict, output_dir: str, prefix: str = "output") -> list[str]:
     """Extract and save images from an API response. Returns list of saved paths."""
     os.makedirs(output_dir, exist_ok=True)
     saved = []
+
+    # Check for last_response with images (background job result)
+    if isinstance(data, dict) and "last_response" in data:
+        last_resp = data["last_response"]
+        if isinstance(last_resp, dict) and "images" in last_resp:
+            result = _extract_images(last_resp["images"], output_dir, prefix)
+            if result:
+                return result
 
     # Handle different response shapes
     images = []
@@ -46,7 +62,10 @@ def save_images_from_response(data: dict, output_dir: str, prefix: str = "output
             images = [data]
         # List of images in data.images
         elif "images" in data:
-            images = data["images"]
+            result = _extract_images(data["images"], output_dir, prefix)
+            if result:
+                return result
+            images = data["images"] if isinstance(data["images"], list) else []
         # Frames from animation
         elif "frames" in data:
             images = data["frames"]
@@ -58,15 +77,53 @@ def save_images_from_response(data: dict, output_dir: str, prefix: str = "output
 
     for i, img in enumerate(images):
         if isinstance(img, dict) and "base64" in img:
-            fmt = img.get("format", "png")
-            ext = fmt if fmt != "jpeg" else "jpg"
-            path = os.path.join(output_dir, f"{prefix}_{i}.{ext}")
-            save_base64_image(img["base64"], path, fmt)
-            saved.append(path)
+            img_type = img.get("type", "")
+            if img_type == "rgba_bytes" and "width" in img:
+                w = img["width"]
+                h = img.get("height", w)
+                path = os.path.join(output_dir, f"{prefix}_{i}.png")
+                _save_rgba_image(img["base64"], w, h, path)
+                saved.append(path)
+            else:
+                fmt = img.get("format", "png")
+                ext = fmt if fmt != "jpeg" else "jpg"
+                path = os.path.join(output_dir, f"{prefix}_{i}.{ext}")
+                save_base64_image(img["base64"], path, fmt)
+                saved.append(path)
         elif isinstance(img, str):
-            # Raw base64 string
             path = os.path.join(output_dir, f"{prefix}_{i}.png")
             save_base64_image(img, path)
             saved.append(path)
 
+    return saved
+
+
+def _extract_images(images_data, output_dir: str, prefix: str) -> list[str]:
+    """Extract images from dict (direction-keyed) or list format."""
+    saved = []
+    if isinstance(images_data, dict):
+        # Direction-keyed images: {"south": {"type": "rgba_bytes", "width": 64, "base64": "..."}, ...}
+        for direction, img in images_data.items():
+            if isinstance(img, dict) and "base64" in img:
+                img_type = img.get("type", "")
+                path = os.path.join(output_dir, f"{prefix}_{direction}.png")
+                if img_type == "rgba_bytes" and "width" in img:
+                    w = img["width"]
+                    h = img.get("height", w)
+                    _save_rgba_image(img["base64"], w, h, path)
+                else:
+                    save_base64_image(img["base64"], path)
+                saved.append(path)
+    elif isinstance(images_data, list):
+        for i, img in enumerate(images_data):
+            if isinstance(img, dict) and "base64" in img:
+                img_type = img.get("type", "")
+                path = os.path.join(output_dir, f"{prefix}_{i}.png")
+                if img_type == "rgba_bytes" and "width" in img:
+                    w = img["width"]
+                    h = img.get("height", w)
+                    _save_rgba_image(img["base64"], w, h, path)
+                else:
+                    save_base64_image(img["base64"], path)
+                saved.append(path)
     return saved

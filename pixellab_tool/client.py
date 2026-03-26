@@ -65,19 +65,26 @@ class PixelLabClient:
     def wait_for_job(self, job_id: str, poll_interval: float = 2.0, timeout: float = 300) -> dict:
         """Poll a background job until completion or timeout."""
         start = time.time()
-        poll_count = 0
         while time.time() - start < timeout:
             result = self.get_job(job_id)
             data = result.get("data", {})
             status = result.get("status") or data.get("status", "")
             status_lower = status.lower() if isinstance(status, str) else ""
-            poll_count += 1
-            if poll_count <= 3 or poll_count % 10 == 0:
-                print(f"[DEBUG] Job {job_id[:12]} poll #{poll_count}: status={status}, keys={list(result.keys())}")
+
+            # Check explicit completion status
             if status_lower in ("completed", "complete", "done", "success", "finished"):
                 return result
             if status_lower in ("failed", "error", "cancelled"):
                 raise PixelLabError(500, f"Job {job_id} failed: {result}")
+
+            # Check if last_response contains completed data (API sometimes
+            # keeps status as "processing" but has results in last_response)
+            last_resp = result.get("last_response") or data.get("last_response")
+            if isinstance(last_resp, dict):
+                resp_type = last_resp.get("type", "")
+                if resp_type in ("message_done", "done", "completed"):
+                    return result
+
             time.sleep(poll_interval)
         raise PixelLabError(408, f"Job {job_id} timed out after {timeout}s")
 
