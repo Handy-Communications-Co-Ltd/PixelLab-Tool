@@ -644,21 +644,27 @@ class CharacterPanel(BasePanel):
         copy_frame.pack(fill="x", padx=10, pady=10)
 
         ctk.CTkLabel(copy_frame, text="애니메이션 복사", font=("", 14, "bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        ctk.CTkLabel(copy_frame, text="다른 캐릭터의 애니메이션을 선택한 캐릭터에 복사합니다.", font=("", 10), text_color="gray").pack(anchor="w", padx=10)
+        ctk.CTkLabel(copy_frame, text="원본 캐릭터의 애니메이션을 대상 캐릭터에 복사합니다.", font=("", 10), text_color="gray").pack(anchor="w", padx=10)
 
-        copy_row = ctk.CTkFrame(copy_frame)
-        copy_row.pack(fill="x", padx=10, pady=5)
-
-        ctk.CTkLabel(copy_row, text="원본 캐릭터:").pack(side="left")
-        self.copy_source_menu = ctk.CTkOptionMenu(copy_row, values=["목록을 먼저 새로고침하세요"], width=300)
+        # Source character
+        src_row = ctk.CTkFrame(copy_frame)
+        src_row.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(src_row, text="원본:").pack(side="left")
+        self.copy_source_menu = ctk.CTkOptionMenu(src_row, values=["목록을 먼저 새로고침하세요"], width=300)
         self.copy_source_menu.pack(side="left", padx=10)
+        ctk.CTkButton(src_row, text="확인", width=50, command=self._show_source_anims).pack(side="left")
 
         self.copy_source_anims = ctk.CTkLabel(copy_frame, text="원본 애니메이션: -", font=("", 11), text_color="cyan")
-        self.copy_source_anims.pack(anchor="w", padx=10, pady=5)
+        self.copy_source_anims.pack(anchor="w", padx=10, pady=3)
 
-        ctk.CTkButton(copy_frame, text="원본 애니메이션 확인", command=self._show_source_anims, width=180).pack(anchor="w", padx=10, pady=2)
+        # Target character
+        tgt_row = ctk.CTkFrame(copy_frame)
+        tgt_row.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(tgt_row, text="대상:").pack(side="left")
+        self.copy_target_menu = ctk.CTkOptionMenu(tgt_row, values=["목록을 먼저 새로고침하세요"], width=300)
+        self.copy_target_menu.pack(side="left", padx=10)
 
-        self.copy_btn = ctk.CTkButton(copy_frame, text="선택 캐릭터에 애니메이션 복사", command=self.copy_animations,
+        self.copy_btn = ctk.CTkButton(copy_frame, text="애니메이션 복사 실행", command=self.copy_animations,
                                        height=40, fg_color="green", hover_color="darkgreen")
         self.copy_btn.pack(fill="x", padx=10, pady=10)
 
@@ -713,7 +719,7 @@ class CharacterPanel(BasePanel):
         if not self.require_client():
             return
 
-        target_id = self._get_selected_anim_char_id()
+        target_id = self._get_char_id_from_menu(self.copy_target_menu.get())
         source_id = self._get_char_id_from_menu(self.copy_source_menu.get())
 
         if not target_id:
@@ -765,10 +771,13 @@ class CharacterPanel(BasePanel):
     def _update_anim_dropdown(self):
         """Update the animation tab's character dropdown from loaded characters."""
         if not self.loaded_characters:
-            self.anim_char_menu.configure(values=["캐릭터 없음"])
-            self.anim_char_menu.set("캐릭터 없음")
-            self.copy_source_menu.configure(values=["캐릭터 없음"])
-            self.copy_source_menu.set("캐릭터 없음")
+            no_char = ["캐릭터 없음"]
+            self.anim_char_menu.configure(values=no_char)
+            self.anim_char_menu.set(no_char[0])
+            self.copy_source_menu.configure(values=no_char)
+            self.copy_source_menu.set(no_char[0])
+            self.copy_target_menu.configure(values=no_char)
+            self.copy_target_menu.set(no_char[0])
             return
         items = []
         for ch in self.loaded_characters:
@@ -778,10 +787,9 @@ class CharacterPanel(BasePanel):
         self.anim_char_menu.configure(values=items)
         self.anim_char_menu.set(items[0])
         self.copy_source_menu.configure(values=items)
-        if len(items) > 1:
-            self.copy_source_menu.set(items[1])
-        else:
-            self.copy_source_menu.set(items[0])
+        self.copy_source_menu.set(items[0])
+        self.copy_target_menu.configure(values=items)
+        self.copy_target_menu.set(items[-1] if len(items) > 1 else items[0])
 
     def _get_selected_anim_char_id(self) -> str | None:
         """Extract character ID from the animation dropdown selection."""
@@ -979,20 +987,24 @@ class CharacterPanel(BasePanel):
                 # Show animations
                 anims = _get_character_animations(cid)
                 anim_count = ch.get("animation_count", len(anims))
-                if anims:
-                    anim_text = f"애니메이션 ({len(anims)}): {', '.join(anims)}"
-                elif anim_count > 0:
-                    anim_text = f"애니메이션: {anim_count}개 (미등록)"
-                else:
-                    anim_text = "애니메이션: 없음"
 
-                anim_row = ctk.CTkFrame(info_frame, fg_color="transparent")
-                anim_row.pack(anchor="w", fill="x")
-                ctk.CTkLabel(anim_row, text=anim_text, font=("", 10), text_color="cyan", anchor="w").pack(side="left")
+                anim_header = ctk.CTkFrame(info_frame, fg_color="transparent")
+                anim_header.pack(anchor="w", fill="x")
+
+                if anims:
+                    ctk.CTkLabel(anim_header, text=f"애니메이션 ({len(anims)}개)", font=("", 10, "bold"), text_color="cyan", anchor="w").pack(side="left")
+                    # Show each animation on its own line, wrapped
+                    anim_lines = "  " + "\n  ".join(anims)
+                    ctk.CTkLabel(info_frame, text=anim_lines, font=("", 10), text_color="cyan",
+                                 anchor="w", justify="left").pack(anchor="w")
+                elif anim_count > 0:
+                    ctk.CTkLabel(anim_header, text=f"애니메이션: {anim_count}개 (미등록)", font=("", 10), text_color="yellow", anchor="w").pack(side="left")
+                else:
+                    ctk.CTkLabel(anim_header, text="애니메이션: 없음", font=("", 10), text_color="gray", anchor="w").pack(side="left")
 
                 # Manual register button for untracked animations
                 if anim_count > 0 and len(anims) < anim_count:
-                    ctk.CTkButton(anim_row, text="등록", width=50, height=20, font=("", 10),
+                    ctk.CTkButton(anim_header, text="등록", width=50, height=20, font=("", 10),
                                   command=lambda c=cid: self._manual_register_anims(c)).pack(side="left", padx=5)
 
                 right_frame = ctk.CTkFrame(card, fg_color="transparent")
