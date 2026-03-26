@@ -700,8 +700,8 @@ class CharacterPanel(BasePanel):
             return
         anims = _get_character_animations(source_id)
         if anims:
-            anim_list = "\n  ".join(anims)
-            self.copy_source_anims.configure(text=f"원본 애니메이션 ({len(anims)}개):\n  {anim_list}")
+            anim_list = "\n   ".join(anims)
+            self.copy_source_anims.configure(text=f"원본 애니메이션 ({len(anims)}개):\n   {anim_list}")
         else:
             self.copy_source_anims.configure(text="원본 애니메이션: 추적된 애니메이션 없음")
 
@@ -994,9 +994,9 @@ class CharacterPanel(BasePanel):
 
                 if anims:
                     ctk.CTkLabel(anim_header, text=f"애니메이션 ({len(anims)}개)", font=("", 12, "bold"), text_color="#90EE90", anchor="w").pack(side="left")
-                    anim_lines = "  " + "\n  ".join(anims)
-                    ctk.CTkLabel(info_frame, text=anim_lines, font=("", 12), text_color="#90EE90",
-                                 anchor="w", justify="left").pack(anchor="w", pady=(2, 4))
+                    for anim_name in anims:
+                        ctk.CTkLabel(info_frame, text=f"  {anim_name}", font=("", 12), text_color="#90EE90",
+                                     anchor="w").pack(anchor="w", pady=1)
                 elif anim_count > 0:
                     ctk.CTkLabel(anim_header, text=f"애니메이션: {anim_count}개 (미등록)", font=("", 12), text_color="yellow", anchor="w").pack(side="left")
                 else:
