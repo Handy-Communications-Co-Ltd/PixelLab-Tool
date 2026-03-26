@@ -1078,10 +1078,18 @@ class CharacterPanel(BasePanel):
                 else:
                     run_kwargs["seed"] = random.randint(1, 999999)
 
-                if dirs == "4":
-                    result = self.client.create_character_4dir(desc, w, h, **run_kwargs)
-                else:
-                    result = self.client.create_character_8dir(desc, w, h, **run_kwargs)
+                try:
+                    if dirs == "4":
+                        result = self.client.create_character_4dir(desc, w, h, **run_kwargs)
+                    else:
+                        result = self.client.create_character_8dir(desc, w, h, **run_kwargs)
+                except Exception as e:
+                    err_msg = str(e)
+                    # Show what was sent for debugging
+                    params = f"size={w}x{h}, dirs={dirs}"
+                    if run_kwargs:
+                        params += ", " + ", ".join(f"{k}={v}" for k, v in run_kwargs.items() if k != "seed")
+                    raise Exception(f"{err_msg}\n\n전송 파라미터: {params}\n\n서버 내부 오류일 수 있습니다. 다른 옵션 조합으로 시도해보세요.") from None
 
                 char_id = result.get("character_id", result.get("data", {}).get("character_id", "N/A"))
                 saved = self.handle_job_and_save(result, f"character_{i}")
