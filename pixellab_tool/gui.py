@@ -415,7 +415,9 @@ class CharacterPanel(BasePanel):
         ctk.CTkLabel(cost_info, text="예상 비용  |  4방향: ~$0.08  |  8방향: ~$0.16  |  애니메이션: ~$0.04",
                      font=("", 11), text_color="orange").pack(padx=10, pady=5)
 
-        tabs = ctk.CTkTabview(self)
+        self._manage_loaded = False
+
+        tabs = ctk.CTkTabview(self, command=self._on_tab_change)
         tabs.pack(fill="both", expand=True, padx=20, pady=10)
 
         # ── Create Tab ──
@@ -543,6 +545,11 @@ class CharacterPanel(BasePanel):
 
         self.anim_result = ctk.CTkLabel(anim_tab, text="")
         self.anim_result.pack(pady=5)
+
+    def _on_tab_change(self, tab_name):
+        if tab_name == "관리" and not self._manage_loaded and self.client:
+            self._manage_loaded = True
+            self.after(100, self.refresh_list)
 
     def _update_anim_dropdown(self):
         """Update the animation tab's character dropdown from loaded characters."""
@@ -1599,6 +1606,8 @@ class PixelLabApp(ctk.CTk):
 
         if self.client:
             self.show_panel("Dashboard")
+            # Auto-refresh balance on startup
+            self.after(500, lambda: self._get_panel("Dashboard").refresh_balance())
         else:
             self.show_panel("Settings")
 
