@@ -873,24 +873,106 @@ class CharacterPanel(BasePanel):
             messagebox.showwarning("오류", "원본과 대상 캐릭터가 같습니다.")
             return
 
-        anims = _get_character_animations(source_id)
-        if not anims:
+        source_anims = _get_character_animations(source_id)
+        if not source_anims:
             messagebox.showwarning("애니메이션 없음", "원본 캐릭터에 추적된 애니메이션이 없습니다.")
             return
 
-        if not messagebox.askyesno("확인",
-                f"원본 캐릭터의 {len(anims)}개 애니메이션을 복사하시겠습니까?\n\n"
-                f"애니메이션: {', '.join(anims)}\n"
-                f"예상 비용: ~${len(anims) * 0.04:.2f}"):
-            return
+        target_anims = _get_character_animations(target_id)
+        duplicates = [a for a in source_anims if a in target_anims]
+        new_anims = [a for a in source_anims if a not in target_anims]
 
+        # Show conflict resolution dialog
+        self._show_copy_conflict_dialog(target_id, source_anims, new_anims, duplicates)
+
+    def _show_copy_conflict_dialog(self, target_id, all_anims, new_anims, duplicates):
+        """Show dialog for selecting which animations to copy with conflict resolution."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("애니메이션 복사 확인")
+        dialog.geometry("500x550")
+        dialog.grab_set()
+
+        ctk.CTkLabel(dialog, text="복사할 애니메이션 선택", font=("", 16, "bold")).pack(pady=(15, 5), padx=15, anchor="w")
+
+        # New animations section
+        if new_anims:
+            ctk.CTkLabel(dialog, text=f"새로 추가 ({len(new_anims)}개)", font=("", 13, "bold"),
+                         text_color="#90EE90").pack(anchor="w", padx=15, pady=(10, 3))
+
+        check_vars = {}
+        scroll = ctk.CTkScrollableFrame(dialog, height=300)
+        scroll.pack(fill="both", expand=True, padx=15, pady=5)
+
+        for anim in new_anims:
+            var = ctk.BooleanVar(value=True)
+            ctk.CTkCheckBox(scroll, text=f"{anim}", variable=var,
+                            text_color="#90EE90").pack(anchor="w", pady=2)
+            check_vars[anim] = var
+
+        # Duplicate animations section
+        if duplicates:
+            dup_label = ctk.CTkLabel(scroll, text=f"\n이미 존재하는 애니메이션 ({len(duplicates)}개)",
+                                     font=("", 13, "bold"), text_color="orange")
+            dup_label.pack(anchor="w", pady=(10, 3))
+
+            ctk.CTkLabel(scroll, text="체크하면 덮어씌우기, 해제하면 건너뛰기",
+                         font=("", 10), text_color="gray").pack(anchor="w", pady=(0, 5))
+
+            for anim in duplicates:
+                var = ctk.BooleanVar(value=False)  # Default: skip
+                row = ctk.CTkFrame(scroll, fg_color="transparent")
+                row.pack(anchor="w", fill="x", pady=2)
+                ctk.CTkCheckBox(row, text=f"{anim}", variable=var,
+                                text_color="orange").pack(side="left")
+                ctk.CTkLabel(row, text="(덮어씌우기)", font=("", 10), text_color="gray").pack(side="left", padx=5)
+                check_vars[anim] = var
+
+        if not new_anims and not duplicates:
+            ctk.CTkLabel(scroll, text="복사할 애니메이션이 없습니다.").pack(pady=10)
+
+        # Summary and buttons
+        summary_frame = ctk.CTkFrame(dialog)
+        summary_frame.pack(fill="x", padx=15, pady=10)
+
+        def update_summary(*_):
+            selected = [a for a, v in check_vars.items() if v.get()]
+            cost = len(selected) * 0.04
+            summary_label.configure(text=f"선택: {len(selected)}개  |  예상 비용: ~${cost:.2f}")
+
+        summary_label = ctk.CTkLabel(summary_frame, text="", font=("", 12))
+        summary_label.pack(pady=5)
+        update_summary()
+
+        # Bind checkbox changes to update summary
+        for var in check_vars.values():
+            var.trace_add("write", update_summary)
+
+        btn_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_row.pack(fill="x", padx=15, pady=(0, 15))
+
+        def do_copy():
+            selected = [a for a, v in check_vars.items() if v.get()]
+            if not selected:
+                messagebox.showinfo("알림", "선택된 애니메이션이 없습니다.")
+                return
+            dialog.destroy()
+            self._execute_copy(target_id, selected)
+
+        ctk.CTkButton(btn_row, text="복사 실행", command=do_copy,
+                      height=40, fg_color="green", hover_color="darkgreen").pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ctk.CTkButton(btn_row, text="취소", command=dialog.destroy,
+                      height=40, fg_color="gray", hover_color="darkgray").pack(side="right", width=100)
+
+    def _execute_copy(self, target_id, anims_to_copy):
+        """Execute the animation copy with selected animations."""
         self.copy_btn.configure(state="disabled", text="복사중...")
-        self.app.status_bar.set_status(f"애니메이션 복사중... (0/{len(anims)})")
+        self.app.status_bar.set_status(f"애니메이션 복사중... (0/{len(anims_to_copy)})")
+        total = len(anims_to_copy)
 
         def do_copy():
             all_saved = []
-            for i, template in enumerate(anims):
-                self.after(0, lambda n=i+1, t=len(anims), a=template:
+            for i, template in enumerate(anims_to_copy):
+                self.after(0, lambda n=i+1, t=total, a=template:
                           self.app.status_bar.set_status(f"애니메이션 복사중... ({n}/{t}) - {a}"))
                 result = self.client.animate_character(target_id, template)
                 saved = self.handle_job_and_save(result, f"copy_{template}")
@@ -899,12 +981,12 @@ class CharacterPanel(BasePanel):
             return all_saved
 
         def on_done(saved, err):
-            self.copy_btn.configure(state="normal", text="선택 캐릭터에 애니메이션 복사")
+            self.copy_btn.configure(state="normal", text="애니메이션 복사 실행")
             if err:
                 messagebox.showerror("오류", str(err))
                 self.app.status_bar.set_status("복사 실패")
                 return
-            self.copy_result.configure(text=f"{len(anims)}개 애니메이션 복사 완료 ({len(saved)}개 프레임)")
+            self.copy_result.configure(text=f"{total}개 애니메이션 복사 완료 ({len(saved)}개 프레임)")
             self.app.status_bar.set_status("준비")
 
         self.run_async(do_copy, on_done)
