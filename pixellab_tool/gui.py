@@ -546,10 +546,14 @@ class CharacterPanel(BasePanel):
         self.anim_result = ctk.CTkLabel(anim_tab, text="")
         self.anim_result.pack(pady=5)
 
-    def _on_tab_change(self, tab_name):
-        if tab_name == "관리" and not self._manage_loaded and self.client:
+    def on_panel_shown(self):
+        """Called when the Character panel becomes visible."""
+        if not self._manage_loaded and self.client:
             self._manage_loaded = True
             self.after(100, self.refresh_list)
+
+    def _on_tab_change(self, tab_name):
+        pass
 
     def _update_anim_dropdown(self):
         """Update the animation tab's character dropdown from loaded characters."""
@@ -1688,6 +1692,10 @@ class PixelLabApp(ctk.CTk):
         panel = self._get_panel(key)
         panel.grid(row=0, column=0, sticky="nsew")
         self.current_panel = key
+
+        # Notify panel it's now visible
+        if hasattr(panel, "on_panel_shown"):
+            panel.on_panel_shown()
 
 
 def main():
