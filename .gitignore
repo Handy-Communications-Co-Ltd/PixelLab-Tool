@@ -23,6 +23,9 @@ env/
 # Environment
 .env
 
+# Animation tracking
+animations.json
+
 # OS
 .DS_Store
 Thumbs.db

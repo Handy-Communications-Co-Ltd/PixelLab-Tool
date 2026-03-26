@@ -18,6 +18,41 @@ from .utils import image_to_base64, get_image_size, save_images_from_response
 
 load_dotenv()
 
+ANIM_TRACK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "animations.json")
+
+
+def _load_anim_track() -> dict:
+    """Load animation tracking data."""
+    path = os.path.abspath(ANIM_TRACK_FILE)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_anim_track(data: dict):
+    """Save animation tracking data."""
+    path = os.path.abspath(ANIM_TRACK_FILE)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def _record_animation(character_id: str, template_id: str):
+    """Record that an animation was created for a character."""
+    data = _load_anim_track()
+    if character_id not in data:
+        data[character_id] = []
+    if template_id not in data[character_id]:
+        data[character_id].append(template_id)
+    _save_anim_track(data)
+
+
+def _get_character_animations(character_id: str) -> list[str]:
+    """Get list of animations created for a character."""
+    data = _load_anim_track()
+    return data.get(character_id, [])
+
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -558,6 +593,33 @@ class CharacterPanel(BasePanel):
         self.anim_result = ctk.CTkLabel(anim_tab, text="")
         self.anim_result.pack(pady=5)
 
+        # ── Copy animations section ──
+        ctk.CTkLabel(anim_tab, text="", height=1).pack()  # spacer
+        copy_frame = ctk.CTkFrame(anim_tab)
+        copy_frame.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(copy_frame, text="애니메이션 복사", font=("", 14, "bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        ctk.CTkLabel(copy_frame, text="다른 캐릭터의 애니메이션을 선택한 캐릭터에 복사합니다.", font=("", 10), text_color="gray").pack(anchor="w", padx=10)
+
+        copy_row = ctk.CTkFrame(copy_frame)
+        copy_row.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(copy_row, text="원본 캐릭터:").pack(side="left")
+        self.copy_source_menu = ctk.CTkOptionMenu(copy_row, values=["목록을 먼저 새로고침하세요"], width=300)
+        self.copy_source_menu.pack(side="left", padx=10)
+
+        self.copy_source_anims = ctk.CTkLabel(copy_frame, text="원본 애니메이션: -", font=("", 11), text_color="cyan")
+        self.copy_source_anims.pack(anchor="w", padx=10, pady=5)
+
+        ctk.CTkButton(copy_frame, text="원본 애니메이션 확인", command=self._show_source_anims, width=180).pack(anchor="w", padx=10, pady=2)
+
+        self.copy_btn = ctk.CTkButton(copy_frame, text="선택 캐릭터에 애니메이션 복사", command=self.copy_animations,
+                                       height=40, fg_color="green", hover_color="darkgreen")
+        self.copy_btn.pack(fill="x", padx=10, pady=10)
+
+        self.copy_result = ctk.CTkLabel(copy_frame, text="")
+        self.copy_result.pack(pady=(0, 10))
+
     def on_panel_shown(self):
         """Called when the Character panel becomes visible."""
         if not self._manage_loaded and self.client:
@@ -579,11 +641,89 @@ class CharacterPanel(BasePanel):
         else:
             self.anim_all_var.set(True)
 
+    def _show_source_anims(self):
+        """Show what animations the source character has."""
+        source_id = self._get_char_id_from_menu(self.copy_source_menu.get())
+        if not source_id:
+            self.copy_source_anims.configure(text="원본 애니메이션: 캐릭터를 선택해주세요")
+            return
+        anims = _get_character_animations(source_id)
+        if anims:
+            self.copy_source_anims.configure(text=f"원본 애니메이션: {', '.join(anims)}")
+        else:
+            self.copy_source_anims.configure(text="원본 애니메이션: 추적된 애니메이션 없음")
+
+    def _get_char_id_from_menu(self, menu_text: str) -> str | None:
+        """Extract character ID from menu selection text."""
+        if "[" in menu_text and "]" in menu_text:
+            short_id = menu_text.split("[")[-1].rstrip("]")
+            for ch in self.loaded_characters:
+                cid = str(ch.get("id", ch.get("character_id", "")))
+                if cid.startswith(short_id):
+                    return cid
+        return None
+
+    def copy_animations(self):
+        """Copy animations from source character to target character."""
+        if not self.require_client():
+            return
+
+        target_id = self._get_selected_anim_char_id()
+        source_id = self._get_char_id_from_menu(self.copy_source_menu.get())
+
+        if not target_id:
+            messagebox.showwarning("선택 필요", "대상 캐릭터를 선택해주세요.")
+            return
+        if not source_id:
+            messagebox.showwarning("선택 필요", "원본 캐릭터를 선택해주세요.")
+            return
+        if target_id == source_id:
+            messagebox.showwarning("오류", "원본과 대상 캐릭터가 같습니다.")
+            return
+
+        anims = _get_character_animations(source_id)
+        if not anims:
+            messagebox.showwarning("애니메이션 없음", "원본 캐릭터에 추적된 애니메이션이 없습니다.")
+            return
+
+        if not messagebox.askyesno("확인",
+                f"원본 캐릭터의 {len(anims)}개 애니메이션을 복사하시겠습니까?\n\n"
+                f"애니메이션: {', '.join(anims)}\n"
+                f"예상 비용: ~${len(anims) * 0.04:.2f}"):
+            return
+
+        self.copy_btn.configure(state="disabled", text="복사중...")
+        self.app.status_bar.set_status(f"애니메이션 복사중... (0/{len(anims)})")
+
+        def do_copy():
+            all_saved = []
+            for i, template in enumerate(anims):
+                self.after(0, lambda n=i+1, t=len(anims), a=template:
+                          self.app.status_bar.set_status(f"애니메이션 복사중... ({n}/{t}) - {a}"))
+                result = self.client.animate_character(target_id, template)
+                saved = self.handle_job_and_save(result, f"copy_{template}")
+                all_saved.extend(saved)
+                _record_animation(target_id, template)
+            return all_saved
+
+        def on_done(saved, err):
+            self.copy_btn.configure(state="normal", text="선택 캐릭터에 애니메이션 복사")
+            if err:
+                messagebox.showerror("오류", str(err))
+                self.app.status_bar.set_status("복사 실패")
+                return
+            self.copy_result.configure(text=f"{len(anims)}개 애니메이션 복사 완료 ({len(saved)}개 프레임)")
+            self.app.status_bar.set_status("준비")
+
+        self.run_async(do_copy, on_done)
+
     def _update_anim_dropdown(self):
         """Update the animation tab's character dropdown from loaded characters."""
         if not self.loaded_characters:
             self.anim_char_menu.configure(values=["캐릭터 없음"])
             self.anim_char_menu.set("캐릭터 없음")
+            self.copy_source_menu.configure(values=["캐릭터 없음"])
+            self.copy_source_menu.set("캐릭터 없음")
             return
         items = []
         for ch in self.loaded_characters:
@@ -592,6 +732,11 @@ class CharacterPanel(BasePanel):
             items.append(f"{desc} [{cid[:8]}]")
         self.anim_char_menu.configure(values=items)
         self.anim_char_menu.set(items[0])
+        self.copy_source_menu.configure(values=items)
+        if len(items) > 1:
+            self.copy_source_menu.set(items[1])
+        else:
+            self.copy_source_menu.set(items[0])
 
     def _get_selected_anim_char_id(self) -> str | None:
         """Extract character ID from the animation dropdown selection."""
@@ -769,6 +914,17 @@ class CharacterPanel(BasePanel):
                 ctk.CTkLabel(info_frame, text=desc or "설명 없음", font=("", 13, "bold"), anchor="w").pack(anchor="w")
                 ctk.CTkLabel(info_frame, text=f"{dirs}방향 | {size_str} | ID: {cid[:16]}", font=("", 10), text_color="gray", anchor="w").pack(anchor="w")
 
+                # Show animations
+                anims = _get_character_animations(cid)
+                anim_count = ch.get("animation_count", len(anims))
+                if anims:
+                    anim_text = f"애니메이션 ({anim_count}): {', '.join(anims)}"
+                elif anim_count > 0:
+                    anim_text = f"애니메이션: {anim_count}개 (추적 이전 생성)"
+                else:
+                    anim_text = "애니메이션: 없음"
+                ctk.CTkLabel(info_frame, text=anim_text, font=("", 10), text_color="cyan", anchor="w").pack(anchor="w")
+
                 rb = ctk.CTkRadioButton(card, text="선택", variable=self.selected_char_id, value=cid, width=70)
                 rb.pack(side="right", padx=10)
                 self.char_widgets.append(card)
@@ -860,6 +1016,8 @@ class CharacterPanel(BasePanel):
                     result = self.client.animate_character(cid, template, **kwargs)
                     saved = self.handle_job_and_save(result, f"anim_{d}")
                     all_saved.extend(saved)
+            # Record animation
+            _record_animation(cid, template)
             return all_saved
 
         def on_done(saved, err):
