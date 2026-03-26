@@ -1039,9 +1039,15 @@ class CharacterPanel(BasePanel):
         w, h = int(size_parts[0]), int(size_parts[1])
         dirs = self.dir_var.get()
         kwargs = {}
-        kwargs["view"] = self.view_var.get()
-        kwargs["template_id"] = self.template_var.get()
-        kwargs["detail"] = self.detail_var.get()
+        view = self.view_var.get()
+        if view != "side":
+            kwargs["view"] = view
+        template = self.template_var.get()
+        if template != "mannequin":
+            kwargs["template_id"] = template
+        detail = self.detail_var.get()
+        if detail != "medium":
+            kwargs["detail"] = detail
         if self.isometric_var.get():
             kwargs["isometric"] = True
         outline = self.outline_var.get()
