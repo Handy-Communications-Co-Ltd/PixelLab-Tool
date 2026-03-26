@@ -918,15 +918,25 @@ class CharacterPanel(BasePanel):
                 anims = _get_character_animations(cid)
                 anim_count = ch.get("animation_count", len(anims))
                 if anims:
-                    anim_text = f"애니메이션 ({anim_count}): {', '.join(anims)}"
+                    anim_text = f"애니메이션 ({len(anims)}): {', '.join(anims)}"
                 elif anim_count > 0:
-                    anim_text = f"애니메이션: {anim_count}개 (추적 이전 생성)"
+                    anim_text = f"애니메이션: {anim_count}개 (미등록)"
                 else:
                     anim_text = "애니메이션: 없음"
-                ctk.CTkLabel(info_frame, text=anim_text, font=("", 10), text_color="cyan", anchor="w").pack(anchor="w")
 
-                rb = ctk.CTkRadioButton(card, text="선택", variable=self.selected_char_id, value=cid, width=70)
-                rb.pack(side="right", padx=10)
+                anim_row = ctk.CTkFrame(info_frame, fg_color="transparent")
+                anim_row.pack(anchor="w", fill="x")
+                ctk.CTkLabel(anim_row, text=anim_text, font=("", 10), text_color="cyan", anchor="w").pack(side="left")
+
+                # Manual register button for untracked animations
+                if anim_count > 0 and len(anims) < anim_count:
+                    ctk.CTkButton(anim_row, text="등록", width=50, height=20, font=("", 10),
+                                  command=lambda c=cid: self._manual_register_anims(c)).pack(side="left", padx=5)
+
+                right_frame = ctk.CTkFrame(card, fg_color="transparent")
+                right_frame.pack(side="right", padx=10)
+                rb = ctk.CTkRadioButton(right_frame, text="선택", variable=self.selected_char_id, value=cid, width=70)
+                rb.pack()
                 self.char_widgets.append(card)
 
             self._update_anim_dropdown()
@@ -956,6 +966,37 @@ class CharacterPanel(BasePanel):
             messagebox.showinfo("내보내기 완료", f"저장 위치: {path}")
 
         self.run_async(do_export, on_done)
+
+    def _manual_register_anims(self, character_id: str):
+        """Open dialog to manually register animations for a character."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("애니메이션 수동 등록")
+        dialog.geometry("400x500")
+        dialog.grab_set()
+
+        ctk.CTkLabel(dialog, text=f"캐릭터: {character_id[:16]}...", font=("", 12)).pack(pady=(15, 5), padx=15, anchor="w")
+        ctk.CTkLabel(dialog, text="이 캐릭터에 있는 애니메이션을 선택하세요:", font=("", 11)).pack(pady=5, padx=15, anchor="w")
+
+        existing = _get_character_animations(character_id)
+        check_vars = {}
+
+        scroll = ctk.CTkScrollableFrame(dialog, height=300)
+        scroll.pack(fill="both", expand=True, padx=15, pady=5)
+
+        for template in ANIMATION_TEMPLATES:
+            var = ctk.BooleanVar(value=template in existing)
+            ctk.CTkCheckBox(scroll, text=template, variable=var).pack(anchor="w", pady=2)
+            check_vars[template] = var
+
+        def save():
+            data = _load_anim_track()
+            selected = [t for t, v in check_vars.items() if v.get()]
+            data[character_id] = selected
+            _save_anim_track(data)
+            dialog.destroy()
+            self.refresh_list()
+
+        ctk.CTkButton(dialog, text="저장", command=save, height=40, font=("", 14, "bold")).pack(fill="x", padx=15, pady=15)
 
     def delete_selected(self):
         cid = self.selected_char_id.get()
