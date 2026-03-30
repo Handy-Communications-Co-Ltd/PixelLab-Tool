@@ -3,6 +3,7 @@
 import base64
 import io
 import os
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
@@ -44,6 +45,8 @@ def _save_rgba_image(b64_data: str, width: int, height: int, output_path: str):
 def save_images_from_response(data: dict, output_dir: str, prefix: str = "output") -> list[str]:
     """Extract and save images from an API response. Returns list of saved paths."""
     os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prefix = f"{prefix}_{timestamp}"
     saved = []
 
     # Check for last_response with images (background job result)
@@ -53,6 +56,19 @@ def save_images_from_response(data: dict, output_dir: str, prefix: str = "output
             result = _extract_images(last_resp["images"], output_dir, prefix)
             if result:
                 return result
+        # Single image in last_response (e.g. /create-isometric-tile)
+        if isinstance(last_resp, dict) and "image" in last_resp and isinstance(last_resp["image"], dict):
+            img = last_resp["image"]
+            if "base64" in img:
+                img_type = img.get("type", "")
+                path = os.path.join(output_dir, f"{prefix}_0.png")
+                if img_type == "rgba_bytes" and "width" in img:
+                    w = img["width"]
+                    h = img.get("height", w)
+                    _save_rgba_image(img["base64"], w, h, path)
+                else:
+                    save_base64_image(img["base64"], path)
+                return [path]
 
     # Handle different response shapes
     images = []
@@ -60,6 +76,9 @@ def save_images_from_response(data: dict, output_dir: str, prefix: str = "output
         # Single image in data
         if "base64" in data:
             images = [data]
+        # Single image field (pixflux/bitforge sync response)
+        elif "image" in data and isinstance(data["image"], dict):
+            images = [data["image"]]
         # List of images in data.images
         elif "images" in data:
             result = _extract_images(data["images"], output_dir, prefix)

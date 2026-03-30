@@ -62,11 +62,22 @@ class PixelLabClient:
     def get_job(self, job_id: str) -> dict:
         return self._get(f"/background-jobs/{job_id}")
 
-    def wait_for_job(self, job_id: str, poll_interval: float = 2.0, timeout: float = 300) -> dict:
-        """Poll a background job until completion or timeout."""
-        start = time.time()
-        while time.time() - start < timeout:
-            result = self.get_job(job_id)
+    def wait_for_job(self, job_id: str, poll_interval: float = 2.0) -> dict:
+        """Poll a background job until completion."""
+        job_id = job_id.strip()
+        retries_on_not_found = 3
+        # Initial delay to let the job register on the server
+        time.sleep(1.0)
+        while True:
+            try:
+                result = self.get_job(job_id)
+            except PixelLabError as e:
+                # Retry on 403/404 (job may not be registered yet)
+                if e.status_code in (403, 404) and retries_on_not_found > 0:
+                    retries_on_not_found -= 1
+                    time.sleep(poll_interval)
+                    continue
+                raise
             data = result.get("data", {})
             status = result.get("status") or data.get("status", "")
             status_lower = status.lower() if isinstance(status, str) else ""
@@ -75,7 +86,18 @@ class PixelLabClient:
             if status_lower in ("completed", "complete", "done", "success", "finished"):
                 return result
             if status_lower in ("failed", "error", "cancelled"):
-                raise PixelLabError(500, f"Job {job_id} failed: {result}")
+                # Extract readable error from last_response
+                last_resp = result.get("last_response") or data.get("last_response") or {}
+                detail = last_resp.get("detail") or last_resp.get("error") or ""
+                if "429" in str(detail) or "job limits" in str(detail).lower():
+                    msg = (
+                        "작업 한도 초과!\n\n"
+                        "PixelLab 구독 플랜의 동시 작업 또는 일일 한도에 도달했습니다.\n"
+                        "대시보드에서 잔여 크레딧을 확인하거나 잠시 후 다시 시도해주세요."
+                    )
+                else:
+                    msg = detail or f"작업 실패 (status: {status})"
+                raise PixelLabError(500, msg)
 
             # Check if last_response contains completed data (API sometimes
             # keeps status as "processing" but has results in last_response)
@@ -86,7 +108,6 @@ class PixelLabClient:
                     return result
 
             time.sleep(poll_interval)
-        raise PixelLabError(408, f"Job {job_id} timed out after {timeout}s")
 
     # ── Character Creation ──
 
