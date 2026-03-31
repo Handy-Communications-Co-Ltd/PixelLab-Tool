@@ -56,6 +56,15 @@ def save_images_from_response(data: dict, output_dir: str, prefix: str = "output
             result = _extract_images(last_resp["images"], output_dir, prefix)
             if result:
                 return result
+        # Prefer quantized_image (has proper rgba_bytes type with dimensions)
+        if isinstance(last_resp, dict) and "quantized_image" in last_resp and isinstance(last_resp["quantized_image"], dict):
+            img = last_resp["quantized_image"]
+            if "base64" in img and "width" in img:
+                path = os.path.join(output_dir, f"{prefix}_0.png")
+                w = img["width"]
+                h = img.get("height", w)
+                _save_rgba_image(img["base64"], w, h, path)
+                return [path]
         # Single image in last_response (e.g. /create-isometric-tile)
         if isinstance(last_resp, dict) and "image" in last_resp and isinstance(last_resp["image"], dict):
             img = last_resp["image"]
